@@ -41,34 +41,47 @@ def load_file(file_name, sheet_name_list):
     return raw_data
 
 
-def pre_processing(raw_data, sheet_name_list):
+# def pre_processing(raw_data, sheet_name_list):
+#     '''
+#     find the first row where more than (threshold_fraction) fraction of elements are non-zero
+#     and cut off all rows before this one
+#     :param {string:DataFrame} raw_data: {name of sheet:pure data retrieved from xlsx with column
+#     and index 0,1,2,...}
+#     :param [string] sheet_name_list: name of selected sheets in the xlsx file
+#     :return:{string:DataFrame} data: {name of sheet: data with acceptable zeroes}
+#     '''
+#     # find the target row index in close
+#     template = raw_data['close']
+#     threshold_fraction = 0.8
+#     threshold = threshold_fraction * template.shape[1]
+#     # number of non-zeroe elements in each row
+#     num_of_non_zero = np.sum(template != 0, axis=1)
+#     # index of target row
+#     target_index = np.min(np.where(num_of_non_zero >= threshold)[0])
+#     # use this row index to prune all sheets
+#     data = dict()
+#     for i in range(len(sheet_name_list)):
+#         # prune
+#         temp = raw_data[sheet_name_list[i]].iloc[target_index:, :]
+#         # initialize index with 0,1,2...,otherwise it will be threshold,threshold+1,...
+#         temp.index = range(temp.shape[0])
+#         data[sheet_name_list[i]] = temp
+#     return data
+def pre_processing(raw_data):
     '''
-    find the first row where more than (threshold_fraction) fraction of elements are non-zero
-    and cut off all rows before this one
-    :param {string:DataFrame} raw_data: {name of sheet:pure data retrieved from xlsx with column
-    and index 0,1,2,...}
-    :param [string] sheet_name_list: name of selected sheets in the xlsx file
-    :return:{string:DataFrame} data: {name of sheet: data with acceptable zeroes}
+    清理数据，删除0在200行还有0的列
+    :param {string:DataFrame} raw_data: 从excel文档中读入的数据
+    :return: {string:DataFrame}data: 经过上述清理的数据
     '''
-    # find the target row index in close
-    template = raw_data['close']
-    threshold_fraction = 0.8
-    threshold = threshold_fraction * template.shape[1]
-    # number of non-zeroe elements in each row
-    num_of_non_zero = np.sum(template != 0, axis=1)
-    # index of target row
-    target_index = np.min(np.where(num_of_non_zero >= threshold)[0])
-    print threshold
-    print num_of_non_zero
-    print target_index
-    # use this row index to prune all sheets
+    # use data from A.D.2000
+    reserve_row=192
     data = dict()
-    for i in range(len(sheet_name_list)):
-        # prune
-        temp = raw_data[sheet_name_list[i]].iloc[target_index:, :]
-        # initialize index with 0,1,2...,otherwise it will be threshold,threshold+1,...
-        temp.index = range(temp.shape[0])
-        data[sheet_name_list[i]] = temp
+    template = np.where(raw_data['close'].values[-reserve_row] != 0)[0]
+    print 'stocks left', len(template)
+    for i in raw_data.items():
+        data[i[0]] = pd.DataFrame(i[1].values[-reserve_row:,template])
+        data[i[0]].columns=range(data[i[0]].shape[1])
+        print 'in sheet',i[0],np.sum(data[i[0]].values[0]==0),'zeroes left in the first row'
     return data
 
 
@@ -110,7 +123,7 @@ def getVol(ret):
     interval = 4
     standard_error = pd.rolling_std(ret, interval)
     standard_error.dropna(inplace=True)
-    standard_error.index=range(standard_error.shape[0])
+    standard_error.index = range(standard_error.shape[0])
     return standard_error
 
 
@@ -172,9 +185,9 @@ def getEMA(close):
     **************************************************************************************
           '''
     # real n1,n2,n3
-    n1=12
-    n2=26
-    n3=9
+    n1 = 12
+    n2 = 26
+    n3 = 9
     # n1,n2,n3 for test
     # n1 = 3
     # n2 = 6
@@ -278,8 +291,8 @@ def getMTM(close):
     **************************************************************************************
     '''
     # real value
-    interval=9
-    #test value
+    interval = 9
+    # test value
     # interval=3
     MTM = close.diff(interval)
     MTM.dropna(inplace=True)
@@ -287,7 +300,7 @@ def getMTM(close):
     return MTM
 
 
-def clean_data(file_name,index_list):
+def clean_data(file_name, index_list):
     '''
     从文件读取数据并清理
     :param string file_name: xlsx文件路径
@@ -297,9 +310,8 @@ def clean_data(file_name,index_list):
     '''
     # raw_data:all pure data from file
     raw_data = load_file(file_name, index_list)
-    print 'raw close',raw_data['close'].shape
     # data:data with acceptable amount of zeroes
-    data = pre_processing(raw_data, index_list)
+    data = pre_processing(raw_data)
     # close:close value as factor
     close = data['close']
     # trade:trade value as factor
@@ -322,27 +334,17 @@ def clean_data(file_name,index_list):
     MTM = getMTM(close)
     # 将计算出来的指标存入字典，并找出其最小行数
     unpruned_factor_data = {'KDJ': KDJ, 'EMA': EMA, 'vol': vol, 'MTM': MTM, 'buy_signal': buy_signal,
-                   'sale_signal': sell_signal, 'trade': trade, 'RSI': RSI}
-    print 'shapes of unpruened data'
-    for i in unpruned_factor_data.items():
-        print i[0],'shape',i[1].shape
-    print 'shape of unpruened return value',ret.shape
+                            'sale_signal': sell_signal, 'trade': trade, 'RSI': RSI}
     min_row_number = unpruned_factor_data['KDJ'].shape[0]
     for i in unpruned_factor_data.items():
         if i[1].shape[0] < min_row_number:
             min_row_number = i[1].shape[0]
-            print i[0],'hit min row number ',min_row_number
-    factor_data=dict()
+    factor_data = dict()
     # 从后往前取min_row_number行，对每个指标的数据进行裁剪
     for i in unpruned_factor_data.items():
-        temp=i[1].iloc[(-min_row_number):,:]
-        print temp.shape
-        temp.index=range(temp.shape[0])
-        factor_data[i[0]]=temp
-    print 'shapes of pruned data'
-    for i in factor_data.items():
-        print i[0],'shape',i[1].shape
-    ret=ret.iloc[(-min_row_number):,:]
-    print 'shape of return',ret.shape
-    ret.index=range(ret.shape[0])
-    return [factor_data,ret]
+        temp = i[1].iloc[(-min_row_number):, :]
+        temp.index = range(temp.shape[0])
+        factor_data[i[0]] = temp
+    ret = ret.iloc[(-min_row_number):, :]
+    ret.index = range(ret.shape[0])
+    return [factor_data, ret]

@@ -21,13 +21,7 @@ def fb_reg_over_time(ret, data):
         # 将这个因子显著的股票数目初始化为0
         significant_futures = 0
         for j in range(i[1].shape[1]):
-            try:
-                model = sm.OLS(ret[j].values, i[1][j].values).fit()
-            except:
-                print 'regression error on: stock',j,'factor',i[0]
-                print 'return shape',ret[j].values.shape,'factor shape',i[1][j].values.shape
-                X[num_of_factor, j] = -1
-                continue
+            model = sm.OLS(ret[j].values, i[1][j].values).fit()
             # 用回归的斜率来表征因子暴露
             X[num_of_factor, j] = model.params[0]
             # 如果在这个股票上显著，就加1
