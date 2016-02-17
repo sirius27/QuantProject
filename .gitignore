@@ -1,3 +1,5 @@
+/.idea
+/.git
 # Windows image file caches
 Thumbs.db
 ehthumbs.db
@@ -13,7 +15,8 @@ $RECYCLE.BIN/
 *.msi
 *.msm
 *.msp
-:
+*.pyc
+
 # Windows shortcuts
 *.lnk
 
