@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 from preprocessing import *
 import statsmodels.api as sm
+import matplotlib.pyplot as plt
 
 def fb_reg_over_time(ret, data):
     '''
-    判断每个因子对收益率的鲜猪肚，取
+    判断每个因子对收益率的鲜猪肚
     :param DataFrame ret: 收益率
     :param {string:DataFrame} data: 每个因子相关的数据
     :return: [int,DataFrame] [significant_futures_list, X]: 每个因子在几个股票上显著？;因子暴露矩阵
@@ -21,6 +22,7 @@ def fb_reg_over_time(ret, data):
         # 将这个因子显著的股票数目初始化为0
         significant_futures = 0
         for j in range(i[1].shape[1]):
+            # 取第j个股票在所有时间的收益率与它的因子值进行回归
             model = sm.OLS(ret[j].values, i[1][j].values).fit()
             # 用回归的斜率来表征因子暴露
             X[num_of_factor, j] = model.params[0]

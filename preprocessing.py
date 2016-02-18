@@ -81,7 +81,6 @@ def pre_processing(raw_data):
     for i in raw_data.items():
         data[i[0]] = pd.DataFrame(i[1].values[-reserve_row:,template])
         data[i[0]].columns=range(data[i[0]].shape[1])
-        print 'in sheet',i[0],np.sum(data[i[0]].values[0]==0),'zeroes left in the first row'
     return data
 
 
@@ -99,7 +98,7 @@ def getReturn(close):
     daily_return = up / down
     ret = np.log(daily_return)
     # replace null,inf values with 0
-    ret.replace([np.inf, np.nan], 0, inplace=True)
+    ret.replace([np.inf, -np.inf, np.nan], 0, inplace=True)
     return ret
 
 
