@@ -328,4 +328,6 @@ def clean_data(file_name,index_list):
         factor_data[i[0]]=temp
     ret=ret.iloc[(-min_row_number):,:]
     ret.index=range(ret.shape[0])
+    ret.to_csv('return.csv')
+    factor_data['KDJ'].to_csv('kdj.csv')
     return [factor_data,ret]

@@ -1,5 +1,7 @@
 /.idea
 /.git
+/.csv
+/.txt
 preprocessing_test.pyc
 preprocessing.pyc
 # Windows image file caches

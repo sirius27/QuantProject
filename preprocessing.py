@@ -4,7 +4,7 @@ import numpy as np
 
 '''
 question:
-1.sale_signal 就用bool值去回归？
+1.sell_signal 就用bool值去回归？
 2.the rm sheet has only one column
 3.目前非0数目达到阈值的行数太少，暂时将volativity的interval从26改为4
 '''
@@ -37,51 +37,30 @@ def load_file(file_name, sheet_name_list):
         # reset index and column with 0,1,2,...,
         temp.columns = range(temp.shape[1])
         temp.index = range(temp.shape[0])
+        temp.fillna(0, inplace=True)
         raw_data[sheet_name_list[i]] = temp
     return raw_data
 
 
-# def pre_processing(raw_data, sheet_name_list):
-#     '''
-#     find the first row where more than (threshold_fraction) fraction of elements are non-zero
-#     and cut off all rows before this one
-#     :param {string:DataFrame} raw_data: {name of sheet:pure data retrieved from xlsx with column
-#     and index 0,1,2,...}
-#     :param [string] sheet_name_list: name of selected sheets in the xlsx file
-#     :return:{string:DataFrame} data: {name of sheet: data with acceptable zeroes}
-#     '''
-#     # find the target row index in close
-#     template = raw_data['close']
-#     threshold_fraction = 0.8
-#     threshold = threshold_fraction * template.shape[1]
-#     # number of non-zeroe elements in each row
-#     num_of_non_zero = np.sum(template != 0, axis=1)
-#     # index of target row
-#     target_index = np.min(np.where(num_of_non_zero >= threshold)[0])
-#     # use this row index to prune all sheets
-#     data = dict()
-#     for i in range(len(sheet_name_list)):
-#         # prune
-#         temp = raw_data[sheet_name_list[i]].iloc[target_index:, :]
-#         # initialize index with 0,1,2...,otherwise it will be threshold,threshold+1,...
-#         temp.index = range(temp.shape[0])
-#         data[sheet_name_list[i]] = temp
-#     return data
-def pre_processing(raw_data):
+def pre_processing(close, raw_data, ret):
     '''
-    清理数据，删除0在200行还有0的列
-    :param {string:DataFrame} raw_data: 从excel文档中读入的数据
+    清理数据，找出在close中2000年第一个月为0的列，在所有数据中删除这一列
+    :param DataFrame close :保存收盘价，收盘价将用作去掉2000年第一个月数据为0的列的模板
+    :param {string:DataFrame} raw_data: 存放各个指标数据
+    :param DataFrame ret :收益率
     :return: {string:DataFrame}data: 经过上述清理的数据
     '''
     # use data from A.D.2000
-    reserve_row=192
+    reserve_row = 192
     data = dict()
-    template = np.where(raw_data['close'].values[-reserve_row] != 0)[0]
+    template = np.where(close.values[-reserve_row] != 0)[0]
     print 'stocks left', len(template)
     for i in raw_data.items():
-        data[i[0]] = pd.DataFrame(i[1].values[-reserve_row:,template])
-        data[i[0]].columns=range(data[i[0]].shape[1])
-    return data
+        data[i[0]] = pd.DataFrame(i[1].values[-reserve_row:, template])
+        data[i[0]].columns = range(data[i[0]].shape[1])
+    ret = pd.DataFrame(ret.values[-reserve_row:, template])
+    close = pd.DataFrame(close.values[-reserve_row:, template])
+    return [close, data, ret]
 
 
 def getReturn(close):
@@ -307,10 +286,8 @@ def clean_data(file_name, index_list):
     :return: [{string:DataFrame},DataFrame] [factor_data,ret]: 所用的每个指标的数据，各自放在一个DataFrame中，
     每个DataFrame的[i,j]元素是在第(i+1)天第(j+1)只股票在这个指标上的值.并且用相同的方法对ret进行裁剪，以便回归
     '''
-    # raw_data:all pure data from file
-    raw_data = load_file(file_name, index_list)
-    # data:data with acceptable amount of zeroes
-    data = pre_processing(raw_data)
+    # data:all pure data from file
+    data = load_file(file_name, index_list)
     # close:close value as factor
     close = data['close']
     # trade:trade value as factor
@@ -331,19 +308,20 @@ def clean_data(file_name, index_list):
     RSI = getRSI(close)
     # mtm:mtm value as factor
     MTM = getMTM(close)
+    ev=data['ev']
     # 将计算出来的指标存入字典，并找出其最小行数
     unpruned_factor_data = {'KDJ': KDJ, 'EMA': EMA, 'vol': vol, 'MTM': MTM, 'buy_signal': buy_signal,
-                            'sale_signal': sell_signal, 'trade': trade, 'RSI': RSI}
-    min_row_number = unpruned_factor_data['KDJ'].shape[0]
-    for i in unpruned_factor_data.items():
-        if i[1].shape[0] < min_row_number:
-            min_row_number = i[1].shape[0]
-    factor_data = dict()
-    # 从后往前取min_row_number行，对每个指标的数据进行裁剪
-    for i in unpruned_factor_data.items():
-        temp = i[1].iloc[(-min_row_number):, :]
-        temp.index = range(temp.shape[0])
-        factor_data[i[0]] = temp
-    ret = ret.iloc[(-min_row_number):, :]
-    ret.index = range(ret.shape[0])
-    return [factor_data, ret]
+                            'sell_signal': sell_signal, 'trade': trade, 'RSI': RSI,'ev':ev}
+    [close, data, ret] = pre_processing(close, unpruned_factor_data, ret)
+    return [close, data, ret]
+
+
+if __name__ == '__main__':
+    fname = 'hushen_tech.xlsx'
+    tecnical_index_list = ['close', 'high', 'low', 'trade', 'growth', 'ev']
+    # 指标值和收盘价
+    [close, data, ret] = clean_data(fname, tecnical_index_list)
+    for i in data.items():
+        i[1].to_csv('E:\\QuantProject\\result_demo\\' + i[0] + '.csv')
+    ret.to_csv('E:\\QuantProject\\result_demo\\return.csv')
+    close.to_csv('E:\\QuantProject\\result_demo\\close.csv')
