@@ -1,91 +1,115 @@
 # -*- coding: utf-8 -*-
-from preprocessing import *
-import statsmodels.api as sm
-from macro_process import *
-
-
-def fb_reg_over_time(ret, data):
-    '''
-    用每只股票在一段时间的收益率与这只股票某个因子在这段时间的值做回归，将回归系数每只股票收益率在每个因子上的暴露。
-    并统计每个因子在多少只股票上显著
-    :param DataFrame ret: 收益率
-    :param {string:DataFrame} data: 每个因子相关的数据
-    :return: [{string:int},DataFrame] [significant_futures_list, X]: 每个因子在几个股票上显著？;因子暴露矩阵
-    '''
-    # 标准化
-    # for i in data.items():
-    #     data[i[0]]=(i[1]-i[1].mean())/i[1].std()
-    # ret=(ret-ret.mean())/ret.std()
-    # X用于记录因子暴露（以回归斜率来刻画），X[i,j]是股票(i+1)的收益率在因子(j+1)上的暴露(row个股票，col个因子)
-    X = np.zeros([ret.shape[1], len(data)])
-    # 判断鲜猪肚所用的t检验阈值
-    tvalue_threshold = 1.96
-    significant_futures_list = dict()
-    # num_of_factor是当前正在研究的factor的序号，每个大循环结束之后加1
-    num_of_factor = 0
-    # name of factors,prepared for converting X to DataFrame,with columns=factor_name
-    factor_name = []
-    # 对每个因子进行研究,i是一个tuple,i[0]是指标名，i[1]是一个DataFrame，存有[某一天,某个股票]这个因子的值
-    for i in data.items():
-        factor_name = factor_name + [i[0]]
-        # 将这个因子显著的股票数目初始化为0
-        significant_futures = 0
-        for j in range(i[1].shape[1]):
-            # 取第j个股票在所有时间的收益率与它的因子值进行回归
-            model = sm.OLS(ret[j].values, i[1][j].values).fit()
-            # 用回归的斜率来表征因子暴露
-            if model.params[0] == np.nan:
-                print i[0], j
-            X[j, num_of_factor] = model.params[0]
-            # 如果在这个股票上显著，就加1
-            if abs(model.tvalues) > tvalue_threshold:
-                significant_futures += 1
-        # 将这个因子显著的股票数目放入列表相应的位置中
-        significant_futures_list[i[0]] = significant_futures
-        num_of_factor += 1
-    # 把X转为DataFrame方便处理
-    X = pd.DataFrame(X)
-    X.fillna(0, inplace=True)
-    X.columns = factor_name
-    return [significant_futures_list, X]
-
-
-def fb_reg_over_stock(loading, ret):
-    '''
-    固定的loading(股票数*因子数)，对每一天的股票收益率进行回归，得到每一天的因子收益率，
-    :param DataFrame loading: 因子暴露矩阵，overload[i,j]是第(i+1)个股票在第(j+1)个因子上的暴露
-    :param DataFrame ret: 收益率，ret[i,j]是第(j+1)个股票在第(i+1)天的收益率
-    :return:
-    '''
-    print loading
-    factor_return = np.zeros([ret.shape[0], loading.shape[1]])
-    significant_days_list = dict()
-    tvalue_threshold = 1.96
-    # 取第j+1天的收益率进行回归
-    for j in range(ret.shape[0]):
-        model = sm.OLS(ret.iloc[j, :].values, loading.values).fit()
-        # 回归系数是每一个
-        factor_return[j] = model.params
-        significant_days_list[np.where(abs(model.params) > tvalue_threshold)] += 1
-    factor_return = pd.DataFrame(factor_return)
-    return [significant_days_list, factor_return]
-
+from tech import *
+from macro import *
+import industryA
+import industryB
 
 if __name__ == '__main__':
-    fname = 'hushen_tech.xlsx'
+    '''
+    1.1 计算技术指标的暴露矩阵和因子收益率
+    '''
+    tech_fname = 'hushen_tech.xlsx'
     tecnical_index_list = ['close', 'high', 'low', 'trade', 'growth', 'ev']
     # 指标值和收盘价
-    [close, data, ret] = clean_data(fname, tecnical_index_list)
-    # factor used for regression:['buy_signal', 'EMA', 'RSI', 'KDJ', 'vol', 'trade', 'sell_signal', 'MTM','ev']
-    [significant_futures_list, stock_load_on_factor] = fb_reg_over_time(ret, data)
+    [close, data, ret] = clean_data(tech_fname, tecnical_index_list)
+    # factor used for regression:['buy_signal', 'EMA', 'RSI',
+    # 'KDJ', 'vol', 'trade', 'sell_signal', 'MTM','ev','William']
+    [tech_significant_list, tech_loading] = fb_reg_over_time(ret, data)
+    print tech_significant_list
     # 选择被判断为显著的因子进行第二步回归
-    print significant_futures_list
-    X = stock_load_on_factor['buy_signal', 'RSI', 'KDJ', 'vol', 'trade', 'sell_signal', 'MTM']
-    [significant_days_list, factor_return] = fb_reg_over_stock(X, ret)
-    print significant_days_list
-    # calculating return covariance
+    tech_loading = tech_loading[['buy_signal', 'RSI', 'KDJ', 'vol', 'trade', 'sell_signal', 'MTM','William']]
+    tech_factor_return = fb_reg_over_stock(tech_loading, ret)
+    print tech_factor_return.shape
+
+
+    '''
+    1.2 通过已知的宏观指标的收益率计算暴露矩阵
+    '''
+
+
+    macro_fname='macro.xlsx'
+    macro_index_list=['Ind_growth','CPI','Ex_inport','Deficit','M2','Conf','USD','Mkt_return']
+    macro_data=load_macro_index(macro_fname,macro_index_list)
+    [macro_loading,macro_significant_list]=macro_regression(ret,macro_data,macro_index_list)
+    print macro_significant_list
+    # 根据显著股票数，选取其中的CPI,Mkt_return因子
+    macro_loading=macro_loading[['CPI','Mkt_return']]
+    # 同样的方法选取macro_data中显著因子对应的因子收益率
+    macro_factor_return=macro_data[['CPI','Mkt_return']]
+
+
+    '''
+    1.3A (行业因子方法A)从excel导入已经在matlab中算好的行业因子暴露矩阵
+    '''
+
+
+    industry_fname='industry.xlsx'
+    industry_list=['Caijue','Huagong','Gangtie','Yousejinshu','Jiancai','Jianzhuzhuangshi','Dianqishebei',
+    'Jixieshebei','Guofangjungong','Qiche','Jiadian','Fangzhifuzhuang','Qinggongzhizao','Shangyemaoyi',
+    'Nonglinmuyu','Shipinyinliao','Xiuxianfuwu','Yiliaoshengwu','Gonggongshiye','Jiaotongyunshu',
+    'Fangdichan','Dianzi','Jisuanji','Chuanmei','Tongxin','Yinhang','Feiyinhangjinrong']
+    ind_loading=industryA.load_industry_loading(industry_fname,industry_list)
+    [ind_significant_list,ind_factor_return]=industryA.reg_industry(ret,ind_loading,industry_list)
+    print ind_significant_list
+    # 保留显著天数大于50天的
+    reserve_ind_index_list=[]
+    for i in range(len(industry_list)):
+        if ind_significant_list[industry_list[i]]>50:
+            reserve_ind_index_list=reserve_ind_index_list+[industry_list[i]]
+    ind_factor_return=ind_factor_return[reserve_ind_index_list]
+    ind_loading=ind_loading[reserve_ind_index_list]
+
+
+    # '''
+    # 1.3B (行业因子方法B)读入的已知的行业收益率作为自变量，股票收益率作为因变量进行回归得到因子暴露矩阵
+    # '''
+
+
+    # industry_close_fname='industry_close.xlsx'
+    # industry_list=['801710.SI','801711.SI','801712.SI','801713.SI','801720.SI','801721.SI','801722.SI',
+    #  '801723.SI','801724.SI','801725.SI','801730.SI','801731.SI','801732.SI','801733.SI',
+    #  '801734.SI','801740.SI','801741.SI','801742.SI','801743.SI','801744.SI','801750.SI',
+    #  '801751.SI','801752.SI','801760.SI','801761.SI','801770.SI','801780.SI','801790.SI',]
+
+
+    # '''
+    # 1.3C (行业因子方法C)从excel导入已经在matlab中算好的行业因子暴露矩阵
+    # '''
+    #
+    #
+    # industry_loading_fname='industry.xlsx'
+    # industry_close_fname='industry_close.xlsx'
+    # # 在industry.xlsx中，因子（列）的顺序是industry_list描述的
+    # # 在industry_close.xlsx中，因子（列）的顺序是industry_code描述的
+    # # 这两个顺序并不一样，其对应关系保存在 code_industry_pair.txt 中
+    # #首先按照各自的顺序把因子暴露矩阵和行业收益率矩阵读进来
+    # industry_list=['Caijue','Huagong','Gangtie','Yousejinshu','Jiancai','Jianzhuzhuangshi','Dianqishebei',
+    # 'Jixieshebei','Guofangjungong','Qiche','Jiadian','Fangzhifuzhuang','Qinggongzhizao','Shangyemaoyi',
+    # 'Nonglinmuyu','Shipinyinliao','Xiuxianfuwu','Yiliaoshengwu','Gonggongshiye','Jiaotongyunshu',
+    # 'Fangdichan','Dianzi','Jisuanji','Chuanmei','Tongxin','Yinhang','Feiyinhangjinrong']
+    #
+    # industry_code=['801710.SI','801711.SI','801712.SI','801713.SI','801720.SI','801721.SI','801722.SI',
+    #  '801723.SI','801724.SI','801725.SI','801730.SI','801731.SI','801732.SI','801733.SI',
+    #  '801734.SI','801740.SI','801741.SI','801742.SI','801743.SI','801744.SI','801750.SI',
+    #  '801751.SI','801752.SI','801760.SI','801761.SI','801770.SI','801780.SI','801790.SI',]
+    # # 读取因子暴露矩阵
+    # ind_loading=industryA.load_industry_loading(industry_loading_fname,industry_list)
+    # # 读取行业收盘价
+    # ind_close=industryB.load_industry_close(industry_close_fname,industry_code)
+    # # 按照因子暴露矩阵的列顺序来重新排列收盘价的列，并修改列名
+    # # 从收盘价计算行业收益率并截取其中最后192行，即从2000年开始的数据
+
+    '''
+    2.1 合并各类因子的暴露矩阵和收益率，计算delta
+    '''
+    # 合并因子暴露矩阵
+    X=pd.concat([tech_loading,macro_loading,ind_loading],axis=1)
+    print X.shape
+    # 合并收益率
+    factor_return=pd.concat([tech_factor_return,macro_factor_return,ind_factor_return],axis=1)
+    # 计算协方差
     V = np.cov(ret.transpose().values)
     F = np.cov(factor_return.transpose().values)
-    explained_cov = stock_load_on_factor.values.dot(np.dot(F, stock_load_on_factor.transpose().values))
+    explained_cov = X.values.dot(np.dot(F, X.transpose().values))
     delta = pd.DataFrame(V - explained_cov)
-    delta.to_csv('delta.csv')
+    delta.to_csv('E:\\QuantProject\\result_demo\\delta.csv')

@@ -1,3 +1,4 @@
+%从Raw_Husheng_Hangqing.m中读取原始数据，重新组合之后写入到新的xlsx文件中
 clc;
 clear all;
 %将数据导入结构体
